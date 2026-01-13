@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,9 @@ const Index = () => {
   const [trafficLimit] = useState(10);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('home');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
   const mockVideos = [
     { id: 1, title: 'Building Modern Web Apps', channel: 'Dev Academy', duration: '15:30', views: '1.2M', thumbnail: '🎨', youtubeId: 'dQw4w9WgXcQ' },
@@ -43,6 +46,42 @@ const Index = () => {
     setSelectedVideo(youtubeId);
     setTrafficUsed(prev => Math.min(prev + 0.15, trafficLimit));
   };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+
+    setIsSearching(true);
+    setSearchError('');
+
+    try {
+      const response = await fetch(
+        `https://functions.poehali.dev/970afc0b-b5b6-4760-b78b-0c3c670842ac?q=${encodeURIComponent(searchQuery)}&maxResults=12`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Search failed');
+      }
+
+      setSearchResults(data.videos || []);
+    } catch (error: any) {
+      setSearchError(error.message || 'Ошибка поиска');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    const delaySearch = setTimeout(() => {
+      if (searchQuery.trim() && activeTab === 'search') {
+        handleSearch();
+      }
+    }, 500);
+
+    return () => clearTimeout(delaySearch);
+  }, [searchQuery, activeTab]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10 touch-manipulation">
@@ -163,12 +202,54 @@ const Index = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 h-10 sm:h-12 glass-effect text-sm sm:text-base"
                 />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Icon name="Loader2" size={18} className="animate-spin text-primary" />
+                  </div>
+                )}
               </div>
-              <Card className="glass-effect p-6 sm:p-8 text-center">
-                <Icon name="Search" size={40} className="mx-auto mb-4 text-muted-foreground sm:w-12 sm:h-12" />
-                <h3 className="text-lg sm:text-xl font-semibold mb-2">Начните поиск</h3>
-                <p className="text-sm sm:text-base text-muted-foreground">Введите запрос для поиска видео на YouTube</p>
-              </Card>
+
+              {searchError && (
+                <Card className="glass-effect p-4 border-destructive">
+                  <p className="text-sm text-destructive">{searchError}</p>
+                </Card>
+              )}
+
+              {searchResults.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  {searchResults.map((video) => (
+                    <Card 
+                      key={video.id} 
+                      className="glass-effect overflow-hidden hover-glow cursor-pointer group active:scale-95 transition-transform"
+                      onClick={() => handleVideoClick(video.id)}
+                    >
+                      <div className="aspect-video relative overflow-hidden">
+                        {video.thumbnail ? (
+                          <img 
+                            src={video.thumbnail} 
+                            alt={video.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-4xl">
+                            🎬
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 sm:p-4">
+                        <h3 className="font-semibold mb-1 line-clamp-2 text-sm sm:text-base">{video.title}</h3>
+                        <p className="text-xs sm:text-sm text-muted-foreground">{video.channel}</p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : !isSearching && searchQuery.trim() === '' ? (
+                <Card className="glass-effect p-6 sm:p-8 text-center">
+                  <Icon name="Search" size={40} className="mx-auto mb-4 text-muted-foreground sm:w-12 sm:h-12" />
+                  <h3 className="text-lg sm:text-xl font-semibold mb-2">Начните поиск</h3>
+                  <p className="text-sm sm:text-base text-muted-foreground">Введите запрос для поиска видео на YouTube</p>
+                </Card>
+              ) : null}
             </div>
           </TabsContent>
 
