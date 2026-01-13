@@ -1,23 +1,22 @@
 {
   "tests": [
     {
-      "name": "Test VK video search",
+      "name": "Get active streams",
       "method": "GET",
-      "path": "/?q=кот",
+      "path": "/?action=list",
       "expectedStatus": 200,
       "expectedBody": {
-        "videos": "array",
-        "count": "number"
+        "streams": "array"
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Test missing query parameter",
+      "name": "Get leaderboard",
       "method": "GET",
-      "path": "/",
-      "expectedStatus": 400,
+      "path": "/?action=leaderboard",
+      "expectedStatus": 200,
       "expectedBody": {
-        "error": "string"
+        "leaderboard": "array"
       },
       "bodyMatcher": "partial"
     }

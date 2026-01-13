@@ -2,256 +2,325 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import VideoPlayer from '@/components/VideoPlayer';
+import StreamPlayer from '@/components/StreamPlayer';
+
+interface Stream {
+  id: number;
+  title: string;
+  streamer: string;
+  points: number;
+  viewers: number;
+  started_at: string;
+  phone_id: string;
+}
+
+interface LeaderboardEntry {
+  username: string;
+  points: number;
+  total_stream_time: number;
+  is_streaming: boolean;
+}
 
 const Index = () => {
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('home');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
+  const [activeTab, setActiveTab] = useState('streams');
+  const [streams, setStreams] = useState<Stream[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [username, setUsername] = useState('');
+  const [streamTitle, setStreamTitle] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentStreamId, setCurrentStreamId] = useState<number | null>(null);
 
-  const mockVideos = [
-    { id: '1', title: 'Как приготовить борщ', channel: 'Кулинарный канал', duration: 900, views: 120000, thumbnail: '🍲', vkId: '-12345_67890' },
-    { id: '2', title: 'Путешествие по России', channel: 'Travel Vlog', duration: 1200, views: 89000, thumbnail: '🏔️', vkId: '-12345_67891' },
-    { id: '3', title: 'Обзор нового смартфона', channel: 'Tech Review', duration: 780, views: 210000, thumbnail: '📱', vkId: '-12345_67892' },
-    { id: '4', title: 'Уроки фотографии', channel: 'Photo School', duration: 1500, views: 65000, thumbnail: '📷', vkId: '-12345_67893' },
-  ];
+  const API_URL = 'https://functions.poehali.dev/afbc8166-0afe-42eb-a838-7db81f2c0229';
 
-  const mockHistory = [
-    { id: '1', title: 'Вечерний стрим', time: '2 часа назад', thumbnail: '💡', vkId: '-12345_67894' },
-    { id: '2', title: 'Музыкальный клип', time: '5 часов назад', thumbnail: '🎬', vkId: '-12345_67895' },
-    { id: '3', title: 'Интервью с блогером', time: 'Вчера', thumbnail: '🏗️', vkId: '-12345_67896' },
-  ];
-
-
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const formatViews = (views: number) => {
-    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
-    if (views >= 1000) return `${(views / 1000).toFixed(0)}K`;
-    return views.toString();
-  };
-
-  const handleVideoClick = (vkId: string) => {
-    setSelectedVideo(vkId);
-  };
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-
-    setIsSearching(true);
-    setSearchError('');
-
+  const loadStreams = async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch(
-        `https://functions.poehali.dev/9ef639c7-ab7e-4e6a-969b-70fa95d3fec4?q=${encodeURIComponent(searchQuery)}&count=20`
-      );
-
+      const response = await fetch(`${API_URL}?action=list`);
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Search failed');
-      }
-
-      setSearchResults(data.videos || []);
-    } catch (error: any) {
-      setSearchError(error.message || 'Ошибка поиска');
-      setSearchResults([]);
+      setStreams(data.streams || []);
+    } catch (error) {
+      console.error('Failed to load streams:', error);
     } finally {
-      setIsSearching(false);
+      setIsLoading(false);
+    }
+  };
+
+  const loadLeaderboard = async () => {
+    try {
+      const response = await fetch(`${API_URL}?action=leaderboard&limit=20`);
+      const data = await response.json();
+      setLeaderboard(data.leaderboard || []);
+    } catch (error) {
+      console.error('Failed to load leaderboard:', error);
     }
   };
 
   useEffect(() => {
-    const delaySearch = setTimeout(() => {
-      if (searchQuery.trim() && activeTab === 'search') {
-        handleSearch();
-      }
-    }, 500);
+    loadStreams();
+    loadLeaderboard();
+    
+    const interval = setInterval(() => {
+      loadStreams();
+      loadLeaderboard();
+    }, 10000);
 
-    return () => clearTimeout(delaySearch);
-  }, [searchQuery, activeTab]);
+    return () => clearInterval(interval);
+  }, []);
+
+  const startStream = async () => {
+    if (!username.trim()) {
+      alert('Введите имя пользователя');
+      return;
+    }
+
+    try {
+      const phoneId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const response = await fetch(`${API_URL}?action=start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          phone_id: phoneId,
+          title: streamTitle.trim() || 'Прямой эфир'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setIsStreaming(true);
+        setCurrentStreamId(data.stream_id);
+        loadStreams();
+        alert(`Трансляция запущена! ID: ${data.stream_id}`);
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    } catch (error) {
+      alert('Не удалось начать трансляцию');
+    }
+  };
+
+  const stopStream = async () => {
+    if (!currentStreamId) return;
+
+    try {
+      const response = await fetch(`${API_URL}?action=stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stream_id: currentStreamId })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setIsStreaming(false);
+        setCurrentStreamId(null);
+        loadStreams();
+        loadLeaderboard();
+        alert(`Трансляция завершена! Заработано баллов: ${data.points_earned}`);
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    } catch (error) {
+      alert('Не удалось завершить трансляцию');
+    }
+  };
+
+  const formatDuration = (isoDate: string) => {
+    const start = new Date(isoDate);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - start.getTime()) / 1000);
+    const minutes = Math.floor(diff / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) return `${hours}ч ${minutes % 60}м`;
+    return `${minutes}м`;
+  };
+
+  const formatStreamTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}ч ${minutes}м`;
+    return `${minutes}м`;
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10 touch-manipulation">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/10">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-7xl">
         <header className="mb-6 sm:mb-8 animate-fade-in">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold gradient-text">VK Видео</h1>
-            <Button variant="ghost" size="icon" className="hover-glow h-8 w-8 sm:h-10 sm:w-10">
-              <Icon name="Settings" size={18} />
-            </Button>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold gradient-text">📱 LiveStream</h1>
+            <Badge variant="default" className="text-xs sm:text-sm px-3 py-1 animate-pulse-glow">
+              <Icon name="Radio" size={14} className="mr-2" />
+              {streams.length} Live
+            </Badge>
           </div>
+
+          {!isStreaming ? (
+            <Card className="glass-effect p-4 sm:p-6">
+              <h3 className="text-lg font-semibold mb-4">Начать свою трансляцию</h3>
+              <div className="space-y-3">
+                <Input
+                  placeholder="Ваше имя"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="glass-effect"
+                />
+                <Input
+                  placeholder="Название трансляции (опционально)"
+                  value={streamTitle}
+                  onChange={(e) => setStreamTitle(e.target.value)}
+                  className="glass-effect"
+                />
+                <Button 
+                  onClick={startStream}
+                  className="w-full"
+                  size="lg"
+                >
+                  <Icon name="Video" size={18} className="mr-2" />
+                  Стать стримером
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <Card className="glass-effect p-4 sm:p-6 border-2 border-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    Вы в эфире!
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Баллы начисляются за каждую минуту стрима
+                  </p>
+                </div>
+                <Button 
+                  onClick={stopStream}
+                  variant="destructive"
+                >
+                  <Icon name="StopCircle" size={18} className="mr-2" />
+                  Завершить
+                </Button>
+              </div>
+            </Card>
+          )}
         </header>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="glass-effect w-full justify-start overflow-x-auto flex-nowrap">
-            <TabsTrigger value="home" className="gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
-              <Icon name="Home" size={14} />
-              <span className="hidden sm:inline">Главная</span>
+          <TabsList className="glass-effect w-full justify-start">
+            <TabsTrigger value="streams" className="gap-2">
+              <Icon name="Radio" size={14} />
+              Трансляции
             </TabsTrigger>
-            <TabsTrigger value="search" className="gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
-              <Icon name="Search" size={14} />
-              <span className="hidden sm:inline">Поиск</span>
-            </TabsTrigger>
-            <TabsTrigger value="saved" className="gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
-              <Icon name="Bookmark" size={14} />
-              <span className="hidden sm:inline">Сохранённое</span>
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap">
-              <Icon name="History" size={14} />
-              <span className="hidden sm:inline">История</span>
+            <TabsTrigger value="leaderboard" className="gap-2">
+              <Icon name="Trophy" size={14} />
+              Рейтинг
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="home" className="space-y-4 sm:space-y-6 animate-fade-in">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">Рекомендуемые видео</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {mockVideos.map((video) => (
+          <TabsContent value="streams" className="animate-fade-in">
+            {isLoading ? (
+              <Card className="glass-effect p-8 text-center">
+                <Icon name="Loader2" size={40} className="mx-auto mb-4 animate-spin text-primary" />
+                <p className="text-muted-foreground">Загрузка трансляций...</p>
+              </Card>
+            ) : streams.length === 0 ? (
+              <Card className="glass-effect p-8 text-center">
+                <Icon name="Radio" size={40} className="mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-xl font-semibold mb-2">Нет активных трансляций</h3>
+                <p className="text-muted-foreground">Станьте первым стримером!</p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {streams.map((stream) => (
                   <Card 
-                    key={video.id} 
-                    className="glass-effect overflow-hidden hover-glow cursor-pointer group active:scale-95 transition-transform"
-                    onClick={() => handleVideoClick(video.vkId)}
+                    key={stream.id}
+                    className="glass-effect overflow-hidden hover-glow cursor-pointer group"
+                    onClick={() => setSelectedStream(stream)}
                   >
-                    <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-4xl sm:text-6xl group-hover:scale-105 transition-transform">
-                      {video.thumbnail}
+                    <div className="aspect-video bg-gradient-to-br from-red-500/20 to-purple-500/20 flex items-center justify-center text-6xl relative">
+                      📱
+                      <div className="absolute top-2 left-2 flex gap-2">
+                        <Badge variant="destructive" className="animate-pulse">
+                          <Icon name="Radio" size={12} className="mr-1" />
+                          LIVE
+                        </Badge>
+                        <Badge variant="secondary">
+                          <Icon name="Users" size={12} className="mr-1" />
+                          {stream.viewers}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="p-3 sm:p-4">
-                      <h3 className="font-semibold mb-1 line-clamp-2 text-sm sm:text-base">{video.title}</h3>
-                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">{video.channel}</p>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{formatViews(video.views)}</span>
-                        <span>{formatDuration(video.duration)}</span>
+                    <div className="p-4">
+                      <h3 className="font-semibold mb-1 line-clamp-1">{stream.title}</h3>
+                      <p className="text-sm text-muted-foreground mb-2">{stream.streamer}</p>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-primary font-semibold">⭐ {stream.points}</span>
+                        <span className="text-muted-foreground">{formatDuration(stream.started_at)}</span>
                       </div>
                     </div>
                   </Card>
                 ))}
               </div>
-            </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="search" className="animate-fade-in">
-            <div className="space-y-4">
-              <div className="relative">
-                <Icon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Поиск видео ВКонтакте..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-10 sm:h-12 glass-effect text-sm sm:text-base"
-                />
-                {isSearching && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Icon name="Loader2" size={18} className="animate-spin text-primary" />
-                  </div>
-                )}
-              </div>
-
-              {searchError && (
-                <Card className="glass-effect p-4 border-destructive">
-                  <p className="text-sm text-destructive">{searchError}</p>
-                </Card>
-              )}
-
-              {searchResults.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                  {searchResults.map((video) => (
-                    <Card 
-                      key={video.id} 
-                      className="glass-effect overflow-hidden hover-glow cursor-pointer group active:scale-95 transition-transform"
-                      onClick={() => handleVideoClick(video.id)}
-                    >
-                      <div className="aspect-video relative overflow-hidden">
-                        {video.thumbnail ? (
-                          <img 
-                            src={video.thumbnail} 
-                            alt={video.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-4xl">
-                            🎬
-                          </div>
+          <TabsContent value="leaderboard" className="animate-fade-in">
+            <Card className="glass-effect p-6">
+              <h2 className="text-2xl font-bold mb-4">🏆 Топ стримеров</h2>
+              <div className="space-y-3">
+                {leaderboard.map((entry, index) => (
+                  <div 
+                    key={index}
+                    className="flex items-center gap-4 p-4 rounded-lg bg-background/50 hover:bg-background/70 transition-colors"
+                  >
+                    <div className="text-2xl font-bold text-muted-foreground w-8">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">{entry.username}</p>
+                        {entry.is_streaming && (
+                          <Badge variant="destructive" className="text-xs">
+                            <Icon name="Radio" size={10} className="mr-1" />
+                            Live
+                          </Badge>
                         )}
                       </div>
-                      <div className="p-3 sm:p-4">
-                        <h3 className="font-semibold mb-1 line-clamp-2 text-sm sm:text-base">{video.title}</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground">{video.channel}</p>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              ) : !isSearching && searchQuery.trim() === '' ? (
-                <Card className="glass-effect p-6 sm:p-8 text-center">
-                  <Icon name="Search" size={40} className="mx-auto mb-4 text-muted-foreground sm:w-12 sm:h-12" />
-                  <h3 className="text-lg sm:text-xl font-semibold mb-2">Начните поиск</h3>
-                  <p className="text-sm sm:text-base text-muted-foreground">Введите запрос для поиска видео ВКонтакте</p>
-                </Card>
-              ) : null}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="saved" className="animate-fade-in">
-            <Card className="glass-effect p-6 sm:p-8 text-center">
-              <Icon name="Bookmark" size={40} className="mx-auto mb-4 text-muted-foreground sm:w-12 sm:h-12" />
-              <h3 className="text-lg sm:text-xl font-semibold mb-2">Нет сохранённых видео</h3>
-              <p className="text-sm sm:text-base text-muted-foreground">Сохраняйте понравившиеся видео для быстрого доступа</p>
+                      <p className="text-xs text-muted-foreground">
+                        Время в эфире: {formatStreamTime(entry.total_stream_time)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-bold text-primary">⭐ {entry.points}</p>
+                      <p className="text-xs text-muted-foreground">баллов</p>
+                    </div>
+                  </div>
+                ))}
+                {leaderboard.length === 0 && (
+                  <p className="text-center text-muted-foreground py-8">
+                    Пока нет стримеров
+                  </p>
+                )}
+              </div>
             </Card>
           </TabsContent>
-
-          <TabsContent value="history" className="animate-fade-in">
-            <div>
-              <div className="flex items-center justify-between mb-3 sm:mb-4">
-                <h2 className="text-xl sm:text-2xl font-bold">История просмотров</h2>
-                <Button variant="ghost" size="sm" className="h-8 sm:h-9 text-xs sm:text-sm">
-                  <Icon name="Trash2" size={14} className="mr-1 sm:mr-2" />
-                  Очистить
-                </Button>
-              </div>
-              <div className="space-y-2 sm:space-y-3">
-                {mockHistory.map((video) => (
-                  <Card 
-                    key={video.id} 
-                    className="glass-effect p-3 sm:p-4 hover-glow cursor-pointer group active:scale-98 transition-transform"
-                    onClick={() => handleVideoClick(video.vkId)}
-                  >
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <div className="w-24 sm:w-32 aspect-video bg-gradient-to-br from-accent/20 to-primary/20 rounded-lg flex items-center justify-center text-3xl sm:text-4xl group-hover:scale-105 transition-transform flex-shrink-0">
-                        {video.thumbnail}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold mb-1 text-sm sm:text-base truncate">{video.title}</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground">{video.time}</p>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-                        <Icon name="MoreVertical" size={18} />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-
-
         </Tabs>
       </div>
 
-      {selectedVideo && (
-        <VideoPlayer 
-          videoId={selectedVideo} 
-          onClose={() => setSelectedVideo(null)} 
+      {selectedStream && (
+        <StreamPlayer 
+          stream={selectedStream}
+          onClose={() => setSelectedStream(null)}
         />
       )}
     </div>
