@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "Test VK video search",
+      "method": "GET",
+      "path": "/?q=кот",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "videos": "array",
+        "count": "number"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test missing query parameter",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
